@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Net.NetworkInformation;
 
 class Program
@@ -22,6 +22,7 @@ class Program
                         pf = Parallel for
                         pfe = Parallel for each
                         pi = Parallel invoke
+                        aw = Await Wrapper
                         OR ctrl+C to break...";
 
     #endregion
@@ -47,10 +48,57 @@ class Program
             PrintReport(GetHostsRepliesWithParallelForEach);
         else if (userInput == "pi")
             PrintReport(GetHostsRepliesWithParallelInvoke);
+        else if (userInput == "aw")
+            PrintReport(GetHostsRepliesWithAwaitWrapper);
         else Console.WriteLine("invalid input...");
     }
 
     #region  GetHostsReplies
+    static Dictionary<string, List<PingReply>> GetHostsRepliesWithAwaitWrapper()
+    {
+        Task<Dictionary<string, List<PingReply>>> t = GetHostsRepliesWithAsyncAwait();
+        t.Wait();
+        return t.Result;
+    }
+
+    async static Task<Dictionary<string, List<PingReply>>> GetHostsRepliesWithAsyncAwait()
+    {
+        Dictionary<string, List<PingReply>> hostsReplies = new Dictionary<string, List<PingReply>>();
+        Dictionary<string, Task<List<PingReply>>> hostsTasks = new Dictionary<string, Task<List<PingReply>>>();
+        foreach (var hostName in _HostsNames)
+        {
+            hostsTasks.Add(hostName, GetPingRepliesAsynkAwait(hostName, _PingCount, _PingInterval));
+        }
+        foreach (var hostTask in hostsTasks
+            )
+        {
+            var pingReply = await hostTask.Value;
+            hostsReplies.Add(hostTask.Key, pingReply);
+        }
+        return hostsReplies;
+    }
+
+    static List<PingReply> GetPingReplies(string hostName, int pingCount = 1, int pingInterval = 1)
+    {
+        Ping ping = new Ping();
+        List<PingReply> pingReplies = new List<PingReply>();
+        for (int i = 0; i < pingCount; i++)
+        {
+            pingReplies.Add(ping.Send(hostName));
+            if (pingCount > 1)
+                Thread.Sleep(pingInterval);
+        }
+        return pingReplies;
+    }
+
+    async static Task<List<PingReply>> GetPingRepliesAsynkAwait(string hostName, int pingCount = 1, int pingInterval = 1)
+    {
+        return await Task.Run(() =>
+        {
+            return GetPingReplies(hostName, pingCount, pingInterval);
+        });
+     }
+
     static Dictionary<string, List<PingReply>> GetHostsReplies()
     {
         Dictionary<string, List<PingReply>> hostsReplies = new Dictionary<string, List<PingReply>>();
@@ -176,7 +224,7 @@ class Program
 
         foreach (var item in _HostsNames)
         {
-            actions.Add(()=>Ping(item));
+            actions.Add(() => Ping(item));
         }
 
         Parallel.Invoke(actions.ToArray());
